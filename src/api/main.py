@@ -5,6 +5,7 @@ from typing import Optional, List, Dict, Any
 import os
 import tempfile
 import logging
+from datetime import datetime
 
 from src.core.config import settings
 from src.core.document_processor import DocumentProcessor
@@ -219,7 +220,6 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    from datetime import datetime
     
     uvicorn.run(
         app,

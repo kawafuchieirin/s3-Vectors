@@ -18,13 +18,19 @@ class RAGEngine:
     
     def __init__(self):
         self.vector_store = S3VectorStore()
-        self.bedrock_client = boto3.client(
-            "bedrock-runtime",
-            region_name=settings.aws_region,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key
-        )
-        self.generation_model_id = settings.bedrock_generation_model_id
+        try:
+            self.bedrock_client = boto3.client(
+                "bedrock-runtime",
+                region_name=settings.aws_region,
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key
+            )
+            self.generation_model_id = settings.bedrock_generation_model_id
+            self.use_bedrock = True
+        except Exception as e:
+            logger.warning(f"Bedrock client initialization failed: {e}. Using mock generation.")
+            self.bedrock_client = None
+            self.use_bedrock = False
     
     def generate_proposal(
         self,
@@ -51,7 +57,10 @@ class RAGEngine:
             prompt = self._build_proposal_prompt(query, context, context_info)
             
             # 提案を生成
-            proposal = self._generate_with_bedrock(prompt)
+            if self.use_bedrock:
+                proposal = self._generate_with_bedrock(prompt)
+            else:
+                proposal = self._generate_mock_proposal(query, context, context_info)
             
             return {
                 "status": "success",
@@ -60,7 +69,7 @@ class RAGEngine:
                     {
                         "file_name": result["metadata"].get("file_name", "Unknown"),
                         "chunk_id": result["id"],
-                        "relevance_score": result.get("score", 0)
+                        "relevance_score": result.get("similarity", 0)
                     }
                     for result in search_results[:5]  # 上位5件のソースを返す
                 ]
@@ -170,17 +179,113 @@ class RAGEngine:
             if "claude" in self.generation_model_id:
                 generated_text = response_body["content"][0]["text"]
             else:
-                # Titan等の他のモデル
-                generated_text = response_body.get("results", [{}])[0].get("outputText", "")
+                # Titan等の他のモデル用
+                generated_text = response_body["results"][0]["outputText"]
             
-            return generated_text
+            return generated_text.strip()
             
         except ClientError as e:
-            logger.error(f"AWS Client error: {e}")
-            raise
+            logger.error(f"Bedrock API error: {e}")
+            # Bedrockでエラーが発生した場合、モック生成にフォールバック
+            logger.warning("Falling back to mock proposal generation")
+            self.use_bedrock = False
+            return self._generate_mock_proposal("", "", {})
         except Exception as e:
-            logger.error(f"Failed to generate text: {e}")
-            raise
+            logger.error(f"Failed to generate with Bedrock: {e}")
+            # その他のエラーでもモック生成にフォールバック
+            logger.warning("Falling back to mock proposal generation")
+            self.use_bedrock = False
+            return self._generate_mock_proposal("", "", {})
+    
+    def _generate_mock_proposal(self, query: str, context: str, context_info: Optional[Dict[str, Any]] = None) -> str:
+        """デモ用のモック提案を生成"""
+        customer_name = context_info.get("customer_name", "お客様") if context_info else "お客様"
+        industry = context_info.get("industry", "") if context_info else ""
+        budget = context_info.get("budget", "") if context_info else ""
+        
+        # 業界別のカスタマイズ
+        industry_solutions = {
+            "製造業": {
+                "solutions": ["AI品質管理システム", "予知保全ソリューション", "生産最適化AI"],
+                "benefits": ["品質向上", "コスト削減", "効率化"]
+            },
+            "金融業": {
+                "solutions": ["セキュリティ強化", "コンプライアンス対応", "リスク管理システム"],
+                "benefits": ["セキュリティ向上", "規制対応", "リスク軽減"]
+            },
+            "IT・通信": {
+                "solutions": ["クラウド移行", "DX推進", "データ分析基盤"],
+                "benefits": ["スケーラビリティ", "コスト最適化", "データ活用"]
+            }
+        }
+        
+        current_solutions = industry_solutions.get(industry, {
+            "solutions": ["デジタル変革", "業務効率化", "コスト最適化"],
+            "benefits": ["生産性向上", "コスト削減", "競争力強化"]
+        })
+        
+        proposal = f"""# 営業提案書
+
+{customer_name} 御中
+
+平素よりお世話になっております。
+お客様のご要望「{query}」について、以下のとおりご提案させていただきます。
+
+## 1. 課題認識
+
+{industry}業界では、以下のような課題が重要視されています：
+- デジタル変革への対応
+- 業務効率化の推進
+- コスト最適化の実現
+
+## 2. 提案ソリューション
+
+弊社では以下のソリューションをご提案いたします：
+
+### 主要な機能・サービス
+"""
+
+        for i, solution in enumerate(current_solutions["solutions"], 1):
+            proposal += f"\n{i}. **{solution}**\n   - 最新技術による効果的な解決策\n   - 実証済みの導入実績\n"
+
+        proposal += f"""
+## 3. 期待される効果
+
+導入により以下の効果が期待できます：
+"""
+
+        for benefit in current_solutions["benefits"]:
+            proposal += f"- {benefit}\n"
+
+        if budget:
+            proposal += f"""
+## 4. 投資効果
+
+ご予算：{budget}
+投資回収期間：12-18ヶ月を想定
+"""
+
+        proposal += """
+## 5. 導入スケジュール
+
+- フェーズ1（1-2ヶ月）：要件定義・設計
+- フェーズ2（2-3ヶ月）：開発・導入
+- フェーズ3（1ヶ月）：運用開始・サポート
+
+## 6. サポート体制
+
+- 24時間365日のサポート
+- 専任担当者によるプロジェクト管理
+- 定期的な効果測定とフォローアップ
+
+ご不明な点やご質問がございましたら、お気軽にお申し付けください。
+
+---
+※この提案書はRAGシステムのデモ機能で生成されました。
+実際のAWS Bedrock環境では、より高品質な提案が生成されます。
+"""
+
+        return proposal
     
     def search_similar_proposals(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """類似の提案資料を検索"""
@@ -193,7 +298,7 @@ class RAGEngine:
                 formatted_results.append({
                     "file_name": metadata.get("file_name", "Unknown"),
                     "excerpt": metadata.get("source_text", "")[:200] + "...",
-                    "relevance_score": result.get("score", 0),
+                    "relevance_score": result.get("similarity", 0),
                     "metadata": metadata
                 })
             

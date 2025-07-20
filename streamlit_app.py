@@ -19,53 +19,89 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 def upload_document(file, metadata: Dict[str, Any]) -> Dict[str, Any]:
     """ドキュメントをアップロード"""
-    files = {"file": (file.name, file, file.type)}
-    data = {
-        "customer_name": metadata.get("customer_name", ""),
-        "industry": metadata.get("industry", ""),
-        "document_type": metadata.get("document_type", "")
-    }
-    
-    response = requests.post(
-        f"{API_BASE_URL}/api/documents/upload",
-        files=files,
-        data=data
-    )
-    
-    return response.json()
+    try:
+        files = {"file": (file.name, file, file.type)}
+        data = {
+            "customer_name": metadata.get("customer_name", ""),
+            "industry": metadata.get("industry", ""),
+            "document_type": metadata.get("document_type", "")
+        }
+        
+        response = requests.post(
+            f"{API_BASE_URL}/api/documents/upload",
+            files=files,
+            data=data
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {
+                "status": "error",
+                "message": f"HTTP {response.status_code}: {response.text}"
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"アップロードエラー: {str(e)}"
+        }
 
 
 def generate_proposal(query: str, context_info: Dict[str, Any]) -> Dict[str, Any]:
     """提案を生成"""
-    payload = {
-        "query": query,
-        "customer_name": context_info.get("customer_name"),
-        "industry": context_info.get("industry"),
-        "budget": context_info.get("budget"),
-        "top_k": context_info.get("top_k", 10)
-    }
-    
-    response = requests.post(
-        f"{API_BASE_URL}/api/proposals/generate",
-        json=payload
-    )
-    
-    return response.json()
+    try:
+        payload = {
+            "query": query,
+            "customer_name": context_info.get("customer_name"),
+            "industry": context_info.get("industry"),
+            "budget": context_info.get("budget"),
+            "top_k": context_info.get("top_k", 10)
+        }
+        
+        response = requests.post(
+            f"{API_BASE_URL}/api/proposals/generate",
+            json=payload
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {
+                "status": "error",
+                "message": f"HTTP {response.status_code}: {response.text}"
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"提案生成エラー: {str(e)}"
+        }
 
 
 def search_documents(query: str, top_k: int = 5) -> Dict[str, Any]:
     """ドキュメントを検索"""
-    payload = {
-        "query": query,
-        "top_k": top_k
-    }
-    
-    response = requests.post(
-        f"{API_BASE_URL}/api/documents/search",
-        json=payload
-    )
-    
-    return response.json()
+    try:
+        payload = {
+            "query": query,
+            "top_k": top_k
+        }
+        
+        response = requests.post(
+            f"{API_BASE_URL}/api/documents/search",
+            json=payload
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {
+                "status": "error",
+                "message": f"HTTP {response.status_code}: {response.text}"
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"検索エラー: {str(e)}"
+        }
 
 
 def main():
